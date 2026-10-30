@@ -1,0 +1,46 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    name: PHP ${{ matrix.php }} · Laravel ${{ matrix.laravel }} · ${{ matrix.dependencies }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest the package allows: Laravel 8.0 on PHP 7.3, each dependency at its lowest.
+          - { php: '7.3', laravel: '8.*', testbench: '6.*', dependencies: 'prefer-lowest' }
+          - { php: '7.4', laravel: '8.*', testbench: '6.*', dependencies: 'prefer-stable' }
+          - { php: '8.0', laravel: '9.*', testbench: '7.*', dependencies: 'prefer-stable' }
+          - { php: '8.1', laravel: '10.*', testbench: '8.*', dependencies: 'prefer-stable' }
+          - { php: '8.2', laravel: '11.*', testbench: '9.*', dependencies: 'prefer-stable' }
+          - { php: '8.3', laravel: '12.*', testbench: '10.*', dependencies: 'prefer-stable' }
+          - { php: '8.3', laravel: '13.*', testbench: '11.*', dependencies: 'prefer-stable' }
+          - { php: '8.4', laravel: '13.*', testbench: '11.*', dependencies: 'prefer-stable' }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: composer:v2
+
+      # Every Laravel 8 and 9 release carries a security advisory, and the apps
+      # this reports for still run them: the old ones have to install here.
+      - name: Let the advisories through
+        run: composer config audit.block-insecure false || true
+
+      - name: Install
+        run: |
+          composer require "laravel/framework:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" --dev --no-interaction --no-update
+          composer update --${{ matrix.dependencies }} --prefer-dist --no-interaction --no-progress
+
+      - name: Test
+        run: vendor/bin/phpunit

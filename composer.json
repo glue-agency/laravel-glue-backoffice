@@ -1,0 +1,44 @@
+{
+    "name": "glue-agency/laravel-glue-backoffice",
+    "description": "Reports a Laravel app to the Glue Dashboard after each deploy",
+    "keywords": [
+        "laravel",
+        "glue",
+        "backoffice"
+    ],
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^7.3|^8.0",
+        "guzzlehttp/guzzle": "^6.5.5|^7.0.1|^8.0",
+        "illuminate/console": "^8.0|^9.0|^10.0|^11.0|^12.0|^13.0",
+        "illuminate/http": "^8.0|^9.0|^10.0|^11.0|^12.0|^13.0",
+        "illuminate/support": "^8.0|^9.0|^10.0|^11.0|^12.0|^13.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^6.0|^7.0|^8.0|^9.0|^10.0|^11.0",
+        "phpunit/phpunit": "^9.3|^10.0|^11.0|^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "GlueAgency\\Backoffice\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "GlueAgency\\Backoffice\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "GlueAgency\\Backoffice\\BackofficeServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

@@ -1,0 +1,14 @@
+{
+    "name": "glue-agency/fietsen-declercq",
+    "description": "An app as the reporter reads it",
+    "require": {
+        "php": "^7.3|^8.0",
+        "ext-json": "*",
+        "guzzlehttp/guzzle": "^7.0",
+        "laravel/framework": "^8.0",
+        "glue-agency/not-installed": "^1.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.5"
+    }
+}
