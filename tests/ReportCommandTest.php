@@ -10,9 +10,10 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 
 /**
- * What a deploy runs once the release is live: the report it sends, and what
- * makes it fail the deploy (a refusal, a Dashboard out of reach) or report
- * nothing at all (any environment but production, no token).
+ * What a deploy runs once the release is live: the report it sends from live
+ * and from any other environment, and what makes it fail the deploy (a
+ * refusal, a Dashboard out of reach) or report nothing at all (no token, no
+ * environment).
  */
 class ReportCommandTest extends TestCase
 {
@@ -20,8 +21,12 @@ class ReportCommandTest extends TestCase
     {
         Http::fake(['https://dashboard.invalid/*' => Http::response(['success' => true])]);
 
+        $this->app['config']->set('app.url', 'https://www.declercq.be');
+
         $this->artisan('glue:backoffice:report', ['--repository-name' => 'git@bitbucket.org:glue-team/declercq.git'])
-            ->expectsOutput("Reported Laravel 'Fietsen Declercq' v'" . $this->app->version() . "'")
+            ->expectsOutput("Reported Laravel 'Fietsen Declercq' v'" . $this->app->version() . "' from the production environment")
+            ->expectsOutput("    PHP v'" . PHP_VERSION . "'")
+            ->expectsOutput("    URL 'https://www.declercq.be'")
             ->expectsOutput("    Name 'git@bitbucket.org:glue-team/declercq.git'")
             ->assertExitCode(0);
 
@@ -33,6 +38,8 @@ class ReportCommandTest extends TestCase
                 && $request->hasHeader('Authorization', 'Bearer secret-token')
                 && $request->isForm()
                 && $request['platform'] === 'laravel'
+                && $request['environment'] === 'production'
+                && $request['url'] === 'https://www.declercq.be'
                 && $request['title'] === 'Fietsen Declercq'
                 && $request['version'] === $this->app->version()
                 && $request['phpVersion'] === PHP_VERSION
@@ -105,6 +112,7 @@ class ReportCommandTest extends TestCase
         $payload = json_decode(Artisan::output(), true);
 
         $this->assertSame('laravel', $payload['platform']);
+        $this->assertSame('production', $payload['environment']);
         $this->assertSame('Fietsen Declercq', $payload['title']);
         $this->assertSame(['name' => 'git@bitbucket.org:glue-team/declercq.git'], $payload['repository']);
         $this->assertCount(3, $payload['packages']);
@@ -125,33 +133,81 @@ class ReportCommandTest extends TestCase
         $this->assertSame(255, mb_strlen($payload['repository']['name']));
     }
 
-    public function test_without_a_token_it_reports_nothing(): void
+    public function test_without_a_token_it_says_where_and_reports_nothing(): void
     {
         Http::fake();
         $this->app['config']->set('glue-backoffice.token', null);
 
         $this->artisan('glue:backoffice:report')
-            ->expectsOutput('No Glue Dashboard token configured, not reporting.')
+            ->expectsOutput('Running in the production environment, no Glue Dashboard token configured, not reporting.')
+            ->assertExitCode(0);
+
+        $this->staging();
+
+        $this->artisan('glue:backoffice:report')
+            ->expectsOutput('Running in the staging environment, no Glue Dashboard token configured, not reporting.')
             ->assertExitCode(0);
 
         Http::assertNothingSent();
     }
 
-    public function test_outside_production_it_reports_nothing_even_with_a_token(): void
+    /**
+     * Only where it answers: the Dashboard keeps nothing more of any other
+     * environment, and a Dashboard too old to know environments refuses a
+     * report without a version rather than file it as live.
+     */
+    public function test_any_other_environment_reports_where_it_answers_and_keeps_no_uid(): void
+    {
+        Http::fake(['https://dashboard.invalid/*' => Http::response(['success' => true])]);
+        $this->staging();
+        $this->app['config']->set('app.url', 'https://staging-declercq-be.cloud.glue.be');
+
+        $this->artisan('glue:backoffice:report', ['--repository-name' => 'git@bitbucket.org:glue-team/declercq.git'])
+            ->expectsOutput("Reported Laravel 'Fietsen Declercq' from the staging environment")
+            ->expectsOutput("    URL 'https://staging-declercq-be.cloud.glue.be'")
+            ->expectsOutput("    Name 'git@bitbucket.org:glue-team/declercq.git'")
+            ->assertExitCode(0);
+
+        Http::assertSent(function (Request $request) {
+            return $request->data() === [
+                'platform'    => 'laravel',
+                'environment' => 'staging',
+                'title'       => 'Fietsen Declercq',
+                'url'         => 'https://staging-declercq-be.cloud.glue.be',
+                'repository'  => ['name' => 'git@bitbucket.org:glue-team/declercq.git'],
+            ];
+        });
+
+        $this->assertFileDoesNotExist($this->uidPath);
+    }
+
+    public function test_laravels_own_default_url_is_left_out(): void
+    {
+        Artisan::call('glue:backoffice:report', ['--dry-run' => true]);
+
+        $this->assertArrayNotHasKey('url', json_decode(Artisan::output(), true));
+    }
+
+    public function test_without_an_environment_it_reports_nothing(): void
     {
         Http::fake();
 
-        foreach (['staging', 'local', 'testing'] as $environment) {
-            $this->app->detectEnvironment(function () use ($environment) {
-                return $environment;
-            });
+        $this->app->detectEnvironment(function () {
+            return '';
+        });
 
-            $this->artisan('glue:backoffice:report')
-                ->expectsOutput("Running in the {$environment} environment, not reporting: only production reports.")
-                ->assertExitCode(0);
-        }
+        $this->artisan('glue:backoffice:report')
+            ->expectsOutput('No environment set (APP_ENV), not reporting.')
+            ->assertExitCode(0);
 
         Http::assertNothingSent();
+    }
+
+    protected function staging(): void
+    {
+        $this->app->detectEnvironment(function () {
+            return 'staging';
+        });
     }
 
     public function test_a_refused_report_lists_every_reason_and_fails_the_deploy(): void

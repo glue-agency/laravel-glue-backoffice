@@ -9,10 +9,11 @@ use Throwable;
 
 /**
  * Reports the app to the Glue Dashboard, run by the deploy once the release is
- * live. Only production reports: any other environment, and a production host
- * without the install's token, say why and report nothing. A refused report
- * exits with 1, which fails the deploy, as the Craft and Magento reporters do:
- * the Dashboard's messages say what to fix.
+ * live, from every environment it is deployed to: live sends the whole report,
+ * any other only where it answers. A host without the install's token says so
+ * and reports nothing. A refused report exits with 1, which fails the deploy,
+ * as the Craft and Magento reporters do: the Dashboard's messages say what to
+ * fix.
  */
 class ReportCommand extends Command
 {
@@ -39,8 +40,10 @@ class ReportCommand extends Command
             return 0;
         }
 
-        if (! $this->laravel->environment('production')) {
-            $this->line("Running in the {$this->laravel->environment()} environment, not reporting: only production reports.");
+        $environment = $report->environment();
+
+        if ($environment === '') {
+            $this->line('No environment set (APP_ENV), not reporting.');
 
             return 0;
         }
@@ -48,7 +51,7 @@ class ReportCommand extends Command
         $token = (string) config('glue-backoffice.token');
 
         if ($token === '') {
-            $this->line('No Glue Dashboard token configured, not reporting.');
+            $this->line("Running in the {$environment} environment, no Glue Dashboard token configured, not reporting.");
 
             return 0;
         }
@@ -72,17 +75,38 @@ class ReportCommand extends Command
             return 1;
         }
 
-        $this->info("Reported Laravel '{$payload['title']}' v'{$payload['version']}'");
-        $this->line("    PHP v'{$payload['phpVersion']}'");
-        $this->info('Packages');
+        $this->reported($payload);
 
-        foreach ($payload['packages'] as $package) {
-            $this->line("    Package '{$package['name']}' v'{$package['version']}'");
+        return 0;
+    }
+
+    /**
+     * Every value the report sent, so the deploy log shows what the Dashboard
+     * was told, from live or not.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function reported(array $payload): void
+    {
+        $version = isset($payload['version']) ? " v'{$payload['version']}'" : '';
+
+        $this->info("Reported Laravel '{$payload['title']}'{$version} from the {$payload['environment']} environment");
+
+        if (isset($payload['phpVersion'])) {
+            $this->line("    PHP v'{$payload['phpVersion']}'");
+        }
+
+        $this->line("    URL '" . ($payload['url'] ?? '') . "'");
+
+        if (isset($payload['packages'])) {
+            $this->info('Packages');
+
+            foreach ($payload['packages'] as $package) {
+                $this->line("    Package '{$package['name']}' v'{$package['version']}'");
+            }
         }
 
         $this->info('Repository');
         $this->line("    Name '" . ($payload['repository']['name'] ?? '') . "'");
-
-        return 0;
     }
 }
